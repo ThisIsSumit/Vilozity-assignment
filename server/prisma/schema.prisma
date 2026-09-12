@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PROJECT_MANAGER
+  DEVELOPER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_IN_REVIEW
+  TASK_OVERDUE
+  GENERIC
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projectsCreated Project[]      @relation("ProjectCreatedBy")
+  assignedTasks   Task[]         @relation("TaskAssignedDeveloper")
+  activityLogs    ActivityLog[]
+  notifications   Notification[] @relation("NotificationRecipient")
+  refreshTokens   RefreshToken[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  company   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects Project[]
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  clientId    String
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy   User          @relation("ProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  tasks       Task[]
+  activityLogs ActivityLog[]
+
+  @@index([createdById])
+  @@index([clientId])
+}
+
+model Task {
+  id                  String     @id @default(uuid())
+  number              Int        @unique @default(autoincrement())
+  projectId           String
+  title               String
+  description         String?
+  assignedDeveloperId String?
+  status              TaskStatus @default(TODO)
+  priority            Priority   @default(MEDIUM)
+  dueDate             DateTime?
+  isOverdue           Boolean    @default(false)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedDeveloper User?          @relation("TaskAssignedDeveloper", fields: [assignedDeveloperId], references: [id], onDelete: SetNull)
+  activityLogs      ActivityLog[]
+
+  @@index([projectId])
+  @@index([assignedDeveloperId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  projectId String
+  taskId    String?
+  userId    String
+  action    String
+  oldValue  String?
+  newValue  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([taskId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  type        NotificationType
+  title       String
+  message     String
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  // Every refresh token issued from the same login shares a familyId — the
+  // first token in a chain gets a fresh one, and each rotation carries it
+  // forward. If a token is ever presented AFTER it's already been rotated
+  // away (revokedAt set), that's a strong signal the token was stolen and
+  // the thief and the legitimate user are now racing each other. Detecting
+  // that lets us revoke the WHOLE family in one shot rather than just the
+  // one reused token, forcing a fresh login on every device using that
+  // session line — see authService.refresh().
+  familyId   String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
