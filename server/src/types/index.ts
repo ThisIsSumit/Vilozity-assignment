@@ -9,6 +9,21 @@ export interface User {
   role: Role;
 }
 
+export type AuthenticatedUser = User;
+
+export interface AccessTokenPayload {
+  sub: string;
+  role: Role;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthenticatedUser;
+    }
+  }
+}
+
 export interface Client {
   id: string;
   name: string;
